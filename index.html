@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>Trading Journal Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Tambahan PapaParse supaya import CSV jalan -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
   <style>
     body {
       margin: 0;
@@ -13,7 +15,6 @@
       background-size: cover;
     }
 
-    /* Overlay hitam biar teks jelas */
     body::before {
       content: "";
       position: fixed;
@@ -34,7 +35,6 @@
       animation: fadeIn 2s ease;
     }
 
-    /* Card Statistik */
     .stats {
       display: flex;
       justify-content: center;
@@ -54,7 +54,6 @@
       transform: scale(1.05);
     }
 
-    /* Form Input */
     form {
       background: rgba(255,255,255,0.1);
       padding: 20px;
@@ -86,7 +85,6 @@
       box-shadow: 0px 0px 15px white;
     }
 
-    /* Table */
     table {
       width: 100%;
       border-collapse: collapse;
@@ -101,13 +99,11 @@
       background: rgba(255,255,255,0.2);
     }
 
-    /* Animations */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(20px);}
       to { opacity: 1; transform: translateY(0);}
     }
 
-    /* Charts */
     .charts {
       display: flex;
       justify-content: center;
@@ -133,7 +129,6 @@
       <div class="card"><h2 id="winrate">Winrate: 0%</h2></div>
     </div>
 
-    <!-- Form -->
     <form id="tradeForm">
       <input type="date" id="tanggal" required>
       <input type="number" id="modal" placeholder="Modal Awal" required>
@@ -146,10 +141,9 @@
       <button type="submit">Tambah Trade</button>
       <button type="button" onclick="exportCSV()">Export CSV</button>
       <input type="file" id="importFile" onchange="importCSV(event)">
-      <button onclick="clearAll()">🗑 Clear All</button>
+      <button type="button" onclick="clearAll()">🗑 Clear All</button>
     </form>
 
-    <!-- Table -->
     <table id="tradeTable">
       <thead>
         <tr>
@@ -168,7 +162,6 @@
       <tbody></tbody>
     </table>
 
-    <!-- Charts -->
     <div class="charts">
       <div class="chart-container">
         <canvas id="winrateChart"></canvas>
@@ -222,6 +215,49 @@
         scales: { x: { ticks: { color: "white" } }, y: { ticks: { color: "white" }}}}
     });
 
+    function renderTable() {
+      tableBody.innerHTML = "";
+      trades.forEach((t, i) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${i+1}</td>
+          <td>${t.tanggal}</td>
+          <td>$${t.modal}</td>
+          <td><a href="${t.before}" target="_blank">Link</a></td>
+          <td><a href="${t.after}" target="_blank">Link</a></td>
+          <td>${t.alasan}</td>
+          <td>${t.pair}</td>
+          <td>${t.sltp}</td>
+          <td style="color:${t.pl>=0?'#00ff99':'#ff4444'}">${t.pl}</td>
+          <td><button onclick="deleteTrade(${i})">❌</button></td>`;
+        tableBody.appendChild(row);
+      });
+
+      // Statistik update
+      const totalPL = trades.reduce((acc, t) => acc + t.pl, 0);
+      const winrate = ((wins / (wins + losses)) * 100).toFixed(1);
+      modalDisplay.innerText = `Modal: $${currentModal}`;
+      plDisplay.innerText = `Total P/L: $${totalPL}`;
+      winrateDisplay.innerText = `Winrate: ${isNaN(winrate)?0:winrate}%`;
+
+      // Update chart
+      winrateChart.data.datasets[0].data = [wins, losses];
+      winrateChart.update();
+
+      growthChart.data.labels = trades.map(t=>t.tanggal);
+      growthChart.data.datasets[0].data = trades.map(t=>t.modal + t.pl);
+      growthChart.update();
+    }
+
+    function deleteTrade(index) {
+      const plValue = trades[index].pl;
+      if(plValue >=0) wins--;
+      else losses--;
+      trades.splice(index, 1);
+      currentModal = trades.length ? trades[trades.length-1].modal + trades[trades.length-1].pl : 0;
+      renderTable();
+    }
+
     tradeForm.addEventListener("submit", function(e) {
       e.preventDefault();
       const tanggal = document.getElementById("tanggal").value;
@@ -240,51 +276,19 @@
       currentModal = modal + pl;
       trades.push({ tanggal, modal, before, after, alasan, pair, sltp, pl });
 
-      // Table update
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${trades.length}</td>
-        <td>${tanggal}</td>
-        <td>$${modal}</td>
-        <td><a href="${before}" target="_blank">Link</a></td>
-        <td><a href="${after}" target="_blank">Link</a></td>
-        <td>${alasan}</td>
-        <td>${pair}</td>
-        <td>${sltp}</td>
-        <td><button onclick="deleteTrade(${i})">❌</button></td>
-        <td style="color:${pl>=0?'#00ff99':'#ff4444'}">${pl}</td>`;
-      tableBody.appendChild(row);
-
-      // Statistik update
-      const totalPL = trades.reduce((acc, t) => acc + t.pl, 0);
-      const winrate = ((wins / (wins + losses)) * 100).toFixed(1);
-      modalDisplay.innerText = `Modal: $${currentModal}`;
-      plDisplay.innerText = `Total P/L: $${totalPL}`;
-      winrateDisplay.innerText = `Winrate: ${isNaN(winrate)?0:winrate}%`;
-
-      function deleteTrade(index) {
-    trades.splice(index,1);
-    renderTable(); }
-
-      // Update chart
-      winrateChart.data.datasets[0].data = [wins, losses];
-      winrateChart.update();
-
-      growthChart.data.labels.push(tanggal);
-      growthChart.data.datasets[0].data.push(currentModal);
-      growthChart.update();
-
+      renderTable();
       tradeForm.reset();
     });
 
     function clearAll() {
-    if (confirm("Yakin hapus semua data?")) {
-      trades = [];
-      renderTable();
+      if (confirm("Yakin hapus semua data?")) {
+        trades = [];
+        wins = 0; losses = 0;
+        currentModal = 0;
+        renderTable();
+      }
     }
-  }
 
-    // Export CSV
     function exportCSV() {
       let csv = "No,Tanggal,Modal,Before,After,Alasan,Pair,SL/TP,P/L\n";
       trades.forEach((t,i)=>{
@@ -298,16 +302,29 @@
     }
 
     function importCSV(event) {
-    const file = event.target.files[0];
-    Papa.parse(file, {
-      header: true,
-      complete: (results) => {
-        trades = results.data.filter(r=>r.tanggal); // buang kosong
-        renderTable();
-      }
-    });
-  }
-
+      const file = event.target.files[0];
+      Papa.parse(file, {
+        header: true,
+        complete: (results) => {
+          trades = results.data.filter(r=>r.tanggal).map(r=>{
+            const pl = parseFloat(r['P/L']) || 0;
+            if(pl>=0) wins++; else losses++;
+            return {
+              tanggal: r['Tanggal'],
+              modal: parseFloat(r['Modal']) || 0,
+              before: r['Before'] || '',
+              after: r['After'] || '',
+              alasan: r['Alasan'] || '',
+              pair: r['Pair'] || '',
+              sltp: r['SL/TP'] || '',
+              pl
+            };
+          });
+          currentModal = trades.length ? trades[trades.length-1].modal + trades[trades.length-1].pl : 0;
+          renderTable();
+        }
+      });
+    }
   </script>
 </body>
 </html>
